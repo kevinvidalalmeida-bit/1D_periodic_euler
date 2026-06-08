@@ -17,63 +17,83 @@
 #endif
 
 // declare supporting functions
-void write2File(DataStruct<FLOATTYPE> &X, DataStruct<FLOATTYPE> &U, std::string name);
-FLOATTYPE calcL2norm(DataStruct<FLOATTYPE> &u, DataStruct<FLOATTYPE> &uinit);
+void write2FileEuler(DataStruct<FLOATTYPE> &X, DataStruct<FLOATTYPE> &rho, 
+                     DataStruct<FLOATTYPE> &rho_u, DataStruct<FLOATTYPE> &rho_E, std::string name);
+FLOATTYPE calcL2normEuler(DataStruct<FLOATTYPE> &rho, DataStruct<FLOATTYPE> &rho_init);
 
 
 int main(int narg, char **argv)
 {
   int numPoints =  80;
-  FLOATTYPE k = 2.; // wave number
+  FLOATTYPE dummy = 0.; // not used for Euler
 
-  if(narg != 3)
+  if(narg != 2)
   {
     std::cout<< "Wrong number of arguments. You should include:" << std::endl;
     std::cout<< "    Num points" << std::endl;
-    std::cout<< "    Wave number" << std::endl;
     return 1;
   }else
   {
     numPoints = std::stoi(argv[1]);
-    k         = std::stod(argv[2]);
   }
 
-  // solution data
-  DataStruct<FLOATTYPE> u(numPoints), f(numPoints), xj(numPoints);
+  // Solution data: rho, rho*u, rho*E
+  DataStruct<FLOATTYPE> rho(numPoints), rho_u(numPoints), rho_E(numPoints), xj(numPoints);
 
-  // flux function
-  LinearFlux<FLOATTYPE> lf;
+  // Flux function for Euler 1D
+  EulerFlux<FLOATTYPE> euler_flux;
 
-  // time solver
-  RungeKutta4<FLOATTYPE> rk(u);
+  // Time solver for Euler
+  RungeKutta4Euler<FLOATTYPE> rk(rho, rho_u, rho_E);
 
-  // Initial Condition
+  // Initial Condition: density profile with small perturbation
   FLOATTYPE *datax = xj.getData();
-  FLOATTYPE *dataU = u.getData();
+  FLOATTYPE *data_rho = rho.getData();
+  FLOATTYPE *data_rho_u = rho_u.getData();
+  FLOATTYPE *data_rho_E = rho_E.getData();
+  
+  FLOATTYPE gamma = 1.4;
+  FLOATTYPE rho0 = 1.0;
+  FLOATTYPE u0 = 0.0;
+  FLOATTYPE p0 = 1.0;
+  
   for(int j = 0; j < numPoints; j++)
   {
-    // xj
+    // Position
     datax[j] = FLOATTYPE(j)/FLOATTYPE(numPoints-1);
-
-    // init Uj
-    dataU[j] = sin(k*2. * M_PI * datax[j]);
+    
+    // Add small density perturbation
+    FLOATTYPE pert = 0.1 * sin(2.0 * M_PI * datax[j]);
+    data_rho[j] = rho0 + pert;
+    
+    // Momentum
+    data_rho_u[j] = data_rho[j] * u0;
+    
+    // Total energy: E = p / ((gamma-1)*rho) + u^2/2
+    FLOATTYPE E = p0 / ((gamma - 1.0) * data_rho[j]) + 0.5 * u0 * u0;
+    data_rho_E[j] = data_rho[j] * E;
   }
 
-  DataStruct<FLOATTYPE> Uinit;
-  Uinit = u;
+  // Store initial condition
+  DataStruct<FLOATTYPE> rho_init;
+  rho_init = rho;
 
-  // Operator
-  Central1D<FLOATTYPE> rhs(u,xj,lf);
+  // RHS Operator
+  Central1DEuler<FLOATTYPE> rhs(rho, rho_u, rho_E, xj, euler_flux);
 
-  FLOATTYPE CFL = 2.4;
-  FLOATTYPE dt = CFL*datax[1];
+  // CFL condition (need to be conservative for nonlinear systems)
+  FLOATTYPE CFL = 0.5;
+  FLOATTYPE dx = datax[1] - datax[0];
+  FLOATTYPE dt = CFL * dx;
 
   // Output Initial Condition
-  write2File(xj, u, "initialCondition.csv");
+  write2FileEuler(xj, rho, rho_u, rho_E, "initialCondition.csv");
 
-  FLOATTYPE t_final = 1.;
+  FLOATTYPE t_final = 0.1;
   FLOATTYPE time = 0.;
-  DataStruct<FLOATTYPE> Ui(u.getSize()); // temp. data
+  
+  // Temporary storage for intermediate Ui
+  DataStruct<FLOATTYPE> Ui_rho(numPoints), Ui_rho_u(numPoints), Ui_rho_E(numPoints);
 
   // init timer
   double compTime = MPI_Wtime();
@@ -81,31 +101,34 @@ int main(int narg, char **argv)
   // main loop
   while(time < t_final)
   {
-    if(time+dt >= t_final) dt = t_final - time;
+    if(time + dt >= t_final) dt = t_final - time;
 
     // take RK step
     rk.initRK();
     for(int s = 0; s < rk.getNumSteps(); s++)
     {
       rk.stepUi(dt);
-      Ui = *rk.currentU();
-      rhs.eval(Ui);
-      rk.setFi(rhs.ref2RHS());
+      rk.currentU(Ui_rho, Ui_rho_u, Ui_rho_E);
+      
+      // Evaluate RHS at intermediate values
+      rhs.eval(Ui_rho, Ui_rho_u, Ui_rho_E);
+      
+      // Set Fi
+      rk.setFi(rhs.ref2RHS_rho(), rhs.ref2RHS_rho_u(), rhs.ref2RHS_rho_E());
     }
     rk.finalizeRK(dt);
     time += dt;
   }
 
-  // finishe timer
+  // finish timer
   compTime = MPI_Wtime() - compTime;
 
-  write2File(xj, u, "final.csv");
+  write2FileEuler(xj, rho, rho_u, rho_E, "final.csv");
 
-  // L2 norm
-  FLOATTYPE err = calcL2norm(Uinit, u);
+  // L2 norm error (on density)
+  FLOATTYPE err = calcL2normEuler(rho, rho_init);
   std::cout << std::setprecision(4) << "Comp. time: " << compTime;
-  std::cout << " sec. Error: " << err/k;
-  std::cout << " kdx: " << k*datax[1]*2.*M_PI;
+  std::cout << " sec. Error: " << err;
   std::cout << std::endl;
 
   return 0;
@@ -115,33 +138,47 @@ int main(int narg, char **argv)
 // ==================================================================
 // AUXILIARY FUNCTIONS
 // ==================================================================
-void write2File(DataStruct<FLOATTYPE> &X, DataStruct<FLOATTYPE> &U, std::string name)
+void write2FileEuler(DataStruct<FLOATTYPE> &X, DataStruct<FLOATTYPE> &rho, 
+                     DataStruct<FLOATTYPE> &rho_u, DataStruct<FLOATTYPE> &rho_E, std::string name)
 {
   std::ofstream file;
-  file.open(name,std::ios_base::trunc);
+  file.open(name, std::ios_base::trunc);
   if(!file.is_open()) 
   {
-    std::cout << "Couldn't open file for Initial Condition" << std::endl;
+    std::cout << "Couldn't open file: " << name << std::endl;
     exit(1);
   }
   
-  for(int j = 0; j < U.getSize(); j++)
+  const FLOATTYPE *datax = X.getData();
+  const FLOATTYPE *data_rho = rho.getData();
+  const FLOATTYPE *data_rho_u = rho_u.getData();
+  const FLOATTYPE *data_rho_E = rho_E.getData();
+  
+  FLOATTYPE gamma = 1.4;
+  
+  file << "x,rho,u,p,E" << std::endl;
+  
+  for(int j = 0; j < rho.getSize(); j++)
   {
-    file << X.getData()[j] << " ," << U.getData()[j] << std::endl;
+    FLOATTYPE u = data_rho_u[j] / data_rho[j];
+    FLOATTYPE E = data_rho_E[j] / data_rho[j];
+    FLOATTYPE p = (gamma - 1.0) * data_rho[j] * (E - 0.5 * u * u);
+    
+    file << datax[j] << "," << data_rho[j] << "," << u << "," << p << "," << E << std::endl;
   }
 
   file.close();
 }
 
-FLOATTYPE calcL2norm(DataStruct<FLOATTYPE> &u, DataStruct<FLOATTYPE> &uinit)
+FLOATTYPE calcL2normEuler(DataStruct<FLOATTYPE> &rho, DataStruct<FLOATTYPE> &rho_init)
 {
   FLOATTYPE err = 0.;
-  const FLOATTYPE *dataU = u.getData();
-  const FLOATTYPE *dataInit = uinit.getData();
+  const FLOATTYPE *data_rho = rho.getData();
+  const FLOATTYPE *data_init = rho_init.getData();
 
-  for(int n = 0; n < u.getSize(); n++)
+  for(int n = 0; n < rho.getSize(); n++)
   {
-    err += (dataU[n] - dataInit[n])*(dataU[n] - dataInit[n]);
+    err += (data_rho[n] - data_init[n])*(data_rho[n] - data_init[n]);
   }
 
   return sqrt( err );
