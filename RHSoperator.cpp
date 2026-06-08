@@ -158,6 +158,3 @@ void Central1DEuler<T>::eval(DataStruct<T> &rho_in, DataStruct<T> &rho_u_in, Dat
 
 template class Central1DEuler<float>;
 template class Central1DEuler<double>;
-
-template class Central1D<float>;
-template class Central1D<double>;

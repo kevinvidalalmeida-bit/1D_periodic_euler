@@ -3,7 +3,7 @@
 #include <string>
 #include <math.h>
 #include <iomanip> // set precision
-#include <mpi.h>
+#include <chrono> // timing
 
 #include "DataStructs.h"
 #include "rk4.h"
@@ -96,7 +96,7 @@ int main(int narg, char **argv)
   DataStruct<FLOATTYPE> Ui_rho(numPoints), Ui_rho_u(numPoints), Ui_rho_E(numPoints);
 
   // init timer
-  double compTime = MPI_Wtime();
+  auto startTime = std::chrono::high_resolution_clock::now();
 
   // main loop
   while(time < t_final)
@@ -121,7 +121,8 @@ int main(int narg, char **argv)
   }
 
   // finish timer
-  compTime = MPI_Wtime() - compTime;
+  auto endTime = std::chrono::high_resolution_clock::now();
+  double compTime = std::chrono::duration<double>(endTime - startTime).count();
 
   write2FileEuler(xj, rho, rho_u, rho_E, "final.csv");
 
