@@ -123,19 +123,24 @@ void Central1DEuler<T>::evalRHS(DataStruct<T> &rho_in, DataStruct<T> &rho_u_in, 
   const T *dataMesh = mesh.getData();
   const int len = rho_in.getSize();
   
-  // Apply central differences with periodic boundary conditions
-  for(int j = 0; j < len; j++)
+  // Same periodic mesh convention as the scalar code: x=0 and x=1 are
+  // duplicated endpoints, and the last RHS value mirrors the first one.
+  const T dxinv0 = 1.0 / ((dataMesh[len-1] - dataMesh[len-2]) + (dataMesh[1] - dataMesh[0]));
+  dataRHS_rho[0] = -(dataF_rho[1] - dataF_rho[len-2]) * dxinv0;
+  dataRHS_rho_u[0] = -(dataF_rho_u[1] - dataF_rho_u[len-2]) * dxinv0;
+  dataRHS_rho_E[0] = -(dataF_rho_E[1] - dataF_rho_E[len-2]) * dxinv0;
+
+  for(int j = 1; j < len - 1; j++)
   {
-    T dx;
-    int j_plus = (j + 1) % len;
-    int j_minus = (j - 1 + len) % len;
-    
-    dx = dataMesh[j_plus] - dataMesh[j_minus];
-    
-    dataRHS_rho[j] = -(dataF_rho[j_plus] - dataF_rho[j_minus]) / dx;
-    dataRHS_rho_u[j] = -(dataF_rho_u[j_plus] - dataF_rho_u[j_minus]) / dx;
-    dataRHS_rho_E[j] = -(dataF_rho_E[j_plus] - dataF_rho_E[j_minus]) / dx;
+    const T dxinv = 1.0 / (dataMesh[j+1] - dataMesh[j-1]);
+    dataRHS_rho[j] = -(dataF_rho[j+1] - dataF_rho[j-1]) * dxinv;
+    dataRHS_rho_u[j] = -(dataF_rho_u[j+1] - dataF_rho_u[j-1]) * dxinv;
+    dataRHS_rho_E[j] = -(dataF_rho_E[j+1] - dataF_rho_E[j-1]) * dxinv;
   }
+
+  dataRHS_rho[len-1] = dataRHS_rho[0];
+  dataRHS_rho_u[len-1] = dataRHS_rho_u[0];
+  dataRHS_rho_E[len-1] = dataRHS_rho_E[0];
 }
 
 template<class T>

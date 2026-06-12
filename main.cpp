@@ -25,7 +25,6 @@ FLOATTYPE calcL2normEuler(DataStruct<FLOATTYPE> &rho, DataStruct<FLOATTYPE> &rho
 int main(int narg, char **argv)
 {
   int numPoints =  80;
-  FLOATTYPE dummy = 0.; // not used for Euler
 
   if(narg != 2)
   {
@@ -35,6 +34,11 @@ int main(int narg, char **argv)
   }else
   {
     numPoints = std::stoi(argv[1]);
+  }
+  if(numPoints < 3)
+  {
+    std::cout << "numPoints must be at least 3" << std::endl;
+    return 1;
   }
 
   // Solution data: rho, rho*u, rho*E
@@ -91,10 +95,6 @@ int main(int narg, char **argv)
 
   FLOATTYPE t_final = 0.1;
   FLOATTYPE time = 0.;
-  
-  // Temporary storage for intermediate Ui
-  DataStruct<FLOATTYPE> Ui_rho(numPoints), Ui_rho_u(numPoints), Ui_rho_E(numPoints);
-
   // init timer
   auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -108,10 +108,9 @@ int main(int narg, char **argv)
     for(int s = 0; s < rk.getNumSteps(); s++)
     {
       rk.stepUi(dt);
-      rk.currentU(Ui_rho, Ui_rho_u, Ui_rho_E);
       
       // Evaluate RHS at intermediate values
-      rhs.eval(Ui_rho, Ui_rho_u, Ui_rho_E);
+      rhs.eval(rk.currentRho(), rk.currentRhoU(), rk.currentRhoE());
       
       // Set Fi
       rk.setFi(rhs.ref2RHS_rho(), rhs.ref2RHS_rho_u(), rhs.ref2RHS_rho_E());

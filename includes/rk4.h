@@ -87,10 +87,10 @@ class RungeKutta4Euler
     DataStruct<T> Ui_rho_u;
     DataStruct<T> Ui_rho_E;
 
-    // RHS arrays (4 for RK4)
-    DataStruct<T> *fi_rho;
-    DataStruct<T> *fi_rho_u;
-    DataStruct<T> *fi_rho_E;
+    // RHS from the previous RK stage, used to build the next Ui.
+    DataStruct<T> prev_rhs_rho;
+    DataStruct<T> prev_rhs_rho_u;
+    DataStruct<T> prev_rhs_rho_E;
     
     // Accumulator for final RHS
     DataStruct<T> RHS_rho;
@@ -120,6 +120,11 @@ class RungeKutta4Euler
 
     // Get current Ui
     void currentU(DataStruct<T> &out_rho, DataStruct<T> &out_rho_u, DataStruct<T> &out_rho_E);
+
+    // Direct references avoid copying Ui at every RK stage.
+    DataStruct<T>& currentRho();
+    DataStruct<T>& currentRhoU();
+    DataStruct<T>& currentRhoE();
 };
 
 #endif // _RUNGE_KUTTA

@@ -58,9 +58,9 @@ template<class T>
 void EulerFlux<T>::computeFlux(DataStruct<T> &rho, DataStruct<T> &rho_u, DataStruct<T> &rho_E,
                                 DataStruct<T> &f_rho, DataStruct<T> &f_rho_u, DataStruct<T> &f_rho_E)
 {
-  T *data_rho = rho.getData();
-  T *data_rho_u = rho_u.getData();
-  T *data_rho_E = rho_E.getData();
+  const T *data_rho = rho.getData();
+  const T *data_rho_u = rho_u.getData();
+  const T *data_rho_E = rho_E.getData();
   
   T *data_f_rho = f_rho.getData();
   T *data_f_rho_u = f_rho_u.getData();
@@ -68,17 +68,14 @@ void EulerFlux<T>::computeFlux(DataStruct<T> &rho, DataStruct<T> &rho_u, DataStr
   
   for(int n = 0; n < rho.getSize(); n++)
   {
-    EulerState<T> state;
-    state.rho = data_rho[n];
-    state.rho_u = data_rho_u[n];
-    state.rho_E = data_rho_E[n];
+    const T inv_rho = 1.0 / data_rho[n];
+    const T u = data_rho_u[n] * inv_rho;
+    const T E = data_rho_E[n] * inv_rho;
+    const T p = (gamma - 1.0) * data_rho[n] * (E - 0.5 * u * u);
     
-    EulerState<T> flux;
-    computeFluxAtPoint(state, flux);
-    
-    data_f_rho[n] = flux.rho;
-    data_f_rho_u[n] = flux.rho_u;
-    data_f_rho_E[n] = flux.rho_E;
+    data_f_rho[n] = data_rho_u[n];
+    data_f_rho_u[n] = data_rho_u[n] * u + p;
+    data_f_rho_E[n] = u * (data_rho_E[n] + p);
   }
 }
 
