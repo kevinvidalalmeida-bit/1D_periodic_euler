@@ -35,11 +35,17 @@ private:
   // reference to flux function
   FluxFunction<T> &F;
 
+  // Periodic ghost values and uniform mesh spacing.
+  T ghostLeft, ghostRight, dx;
+
   void evalRHS(DataStruct<T> &Uin);
 
 public:
   Central1D(DataStruct<T> &_U, DataStruct<T> &_mesh, FluxFunction<T> &_F);
+  Central1D(DataStruct<T> &_U, DataStruct<T> &_mesh, FluxFunction<T> &_F, T _dx);
   ~Central1D();
+
+  void setGhostValues(T left, T right);
 
   virtual void eval();
   virtual void eval(DataStruct<T> &Uin);
